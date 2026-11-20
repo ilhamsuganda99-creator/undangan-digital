@@ -24,9 +24,9 @@ a,button{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--cream-2);outline-offset:3px}
 
 /* ---- Segel ---- */
-#gate{position:fixed;inset:0;z-index:20;perspective:1400px;overflow:hidden;transition:opacity .4s ease 1.6s,visibility 0s linear 2s}
+#gate{position:fixed;inset:0;z-index:20;perspective:1600px;overflow:hidden;opacity:1;visibility:visible;transition:opacity .7s ease,visibility 0s linear .7s}
 #gate.done{opacity:0;visibility:hidden}
-.door{position:absolute;top:0;bottom:16%;width:50%;background-color:#26354f;background-repeat:no-repeat;background-size:auto 100%;transition:transform 1.6s cubic-bezier(.65,0,.25,1);backface-visibility:hidden}
+.door{position:absolute;top:0;bottom:16%;width:50%;background-color:#26354f;background-repeat:no-repeat;background-size:100% 100%;transition:transform 1.85s cubic-bezier(.76,0,.18,1);backface-visibility:hidden;will-change:transform}
 .door.l{left:0;transform-origin:left center;background-position:right top}
 .door.r{right:0;transform-origin:right center;background-position:left top}
 .floor{position:absolute;left:0;right:0;bottom:0;height:16%;z-index:2;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.55rem;text-align:center;background:#ecdcc8;color:var(--navy);transition:opacity .5s}
@@ -42,7 +42,7 @@ a,button{font:inherit;color:inherit}
 #gate.open .door.r{transform:rotateY(105deg)}
 
 /* ---- Halaman utama ---- */
-main{opacity:0;transition:opacity 1.2s ease}
+main{opacity:0;transition:opacity 1.35s cubic-bezier(.2,.65,.25,1);will-change:opacity}
 main.show{opacity:1}
 section{padding:4.5rem 1.5rem;text-align:center}
 .hero{min-height:100svh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:radial-gradient(ellipse at 50% 0,var(--navy-2),var(--navy) 65%)}
@@ -212,35 +212,87 @@ var CONFIG = {
 
   // Galeri
   function buildGallery(){
-    var box = document.getElementById("gal-rows"), urls = CONFIG.photos || [], ok = [], done = 0;
+    var box = document.getElementById("gal-rows");
+    var bg = document.getElementById("gal-bg");
+    var urls = Array.isArray(CONFIG.photos) ? CONFIG.photos : [];
+    var loaded = [];
+    var finished = 0;
+
     if(!box) return;
-    if(!urls.length) return render([]);
-    urls.forEach(function(u, i){
-      var im = new Image();
-      im.onload = function(){ ok.push({u:u, i:i}); fin(); };
-      im.onerror = fin;
-      im.src = u;
-    });
-    function fin(){
-      if(++done < urls.length) return;
-      ok.sort(function(a,b){ return a.i - b.i; });
-      render(ok.map(function(o){ return o.u; }));
+
+    if(!urls.length){
+      renderGallery([]);
+      return;
     }
-    function render(list){
-      var demo = !list.length;
-      if(demo){ for(var k = 1; k <= 8; k++) list.push(null); }
-      else {
-        document.getElementById("gal-bg").style.backgroundImage = 'url("' + list[0] + '")';
+
+    urls.forEach(function(path, index){
+      var img = new Image();
+      var resolvedUrl;
+
+      try {
+        // Pastikan path foto selalu dihitung dari lokasi file index.html.
+        resolvedUrl = new URL(path, document.baseURI).href;
+      } catch(err) {
+        console.error("Path foto tidak valid:", path, err);
+        finishOne();
+        return;
+      }
+
+      img.onload = function(){
+        loaded.push({ url: resolvedUrl, index: index });
+        finishOne();
+      };
+
+      img.onerror = function(){
+        console.error("Foto gagal dimuat:", path, "->", resolvedUrl);
+        finishOne();
+      };
+
+      img.src = resolvedUrl;
+    });
+
+    function finishOne(){
+      finished++;
+      if(finished !== urls.length) return;
+
+      loaded.sort(function(a,b){ return a.index - b.index; });
+      renderGallery(loaded.map(function(item){ return item.url; }));
+    }
+
+    function renderGallery(list){
+      var demo = list.length === 0;
+
+      if(demo){
+        for(var k = 1; k <= 8; k++) list.push(null);
+        if(bg) bg.style.backgroundImage = "";
+        console.warn("Tidak ada foto yang berhasil dimuat. Periksa folder foto dan nama file.");
+      } else {
+        if(bg) bg.style.backgroundImage = 'url("' + list[0] + '")';
+        // Duplikasi hanya untuk membuat lintasan marquee tetap panjang.
         while(list.length < 6) list = list.concat(list);
       }
-      var second = list.slice(Math.ceil(list.length / 2)).concat(list.slice(0, Math.ceil(list.length / 2))).reverse();
-      box.innerHTML = row(list, 240, list.length * 7, false) + row(second, 170, list.length * 9, true);
+
+      var half = Math.ceil(list.length / 2);
+      var second = list.slice(half).concat(list.slice(0, half)).reverse();
+
+      box.innerHTML =
+        makeGalleryRow(list, 240, Math.max(28, list.length * 7), false) +
+        makeGalleryRow(second, 170, Math.max(28, second.length * 9), true);
     }
-    function row(list, h, dur, rev){
-      var one = list.map(function(u){
-        return '<div class="ph">' + (u ? '<img src="' + u + '" alt="" decoding="async">' : '<div class="dm">foto</div>') + '</div>';
+
+    function makeGalleryRow(list, height, duration, reverse){
+      var cards = list.map(function(url){
+        if(!url){
+          return '<div class="ph"><div class="dm">foto</div></div>';
+        }
+
+        return '<div class="ph"><img src="' + url +
+          '" alt="Foto perjalanan Ilham dan Mariatul" loading="lazy" decoding="async"></div>';
       }).join("");
-      return '<div class="mq' + (rev ? ' rev' : '') + '" aria-hidden="true"><div class="trk" style="--h:' + h + 'px;--d:' + dur + 's">' + one + one + '</div></div>';
+
+      return '<div class="mq' + (reverse ? ' rev' : '') +
+        '"><div class="trk" style="--h:' + height + 'px;--d:' +
+        duration + 's">' + cards + cards + '</div></div>';
     }
   }
 
@@ -269,12 +321,31 @@ var CONFIG = {
 
   // Buka segel
   var gate = document.getElementById("gate"), main = document.getElementById("main");
+  var opening = false;
+
   document.getElementById("seal").addEventListener("click", function(){
+    if(opening) return;
+    opening = true;
+
     gate.classList.add("open");
     startMusic();
     buildGallery();
-    main.classList.add("show");
-    setTimeout(function(){ gate.classList.add("done"); document.body.classList.remove("locked"); window.scrollTo(0,0); }, 1900);
+
+    // Konten mulai muncul saat daun pintu sudah terbuka sebagian.
+    setTimeout(function(){
+      main.classList.add("show");
+    }, 950);
+
+    // Hilangkan lapisan pintu setelah animasi 3D hampir selesai.
+    setTimeout(function(){
+      gate.classList.add("done");
+    }, 1850);
+
+    // Buka scroll setelah transisi selesai agar halaman tidak meloncat.
+    setTimeout(function(){
+      document.body.classList.remove("locked");
+      window.scrollTo({ top: 0, behavior: "instant" });
+    }, 2500);
   });
 })();
 </script>
